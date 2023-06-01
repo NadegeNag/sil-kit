@@ -69,18 +69,19 @@ private:
     std::unique_ptr<SilKit::IParticipant> _dashboardParticipant;
     SilKit::Core::IParticipantInternal* _participantInternal{nullptr};
 
+    SilKit::Services::Orchestration::ILifecycleService* _lifecycleService{nullptr};
     SilKit::Services::Orchestration::ISystemMonitor* _systemMonitor{ nullptr };
     SilKit::Core::Discovery::IServiceDiscovery* _serviceDiscovery{ nullptr };
     SilKit::Services::Logging::ILogger* _logger{ nullptr };
     std::shared_ptr<DashboardRetryPolicy> _retryPolicy;
     std::mutex _cachingEventHandlerMx;
     std::unique_ptr<ICachingSilKitEventHandler> _cachingEventHandler;
-    
-    std::mutex _connectedParticipantsMx;
     std::vector<std::string> _connectedParticipants;
 
     SilKit::Util::HandlerId _participantStatusHandlerId{};
     SilKit::Util::HandlerId _systemStateHandlerId{};
+
+    std::future<SilKit::Services::Orchestration::ParticipantState> _lifecycleDone;
 };
 
 template <typename T, typename... A>

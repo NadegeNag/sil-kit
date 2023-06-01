@@ -55,7 +55,9 @@ Dashboard::Dashboard(std::shared_ptr<SilKit::Config::IParticipantConfiguration> 
 {
     _dashboardParticipant = SilKit::CreateParticipantImpl(participantConfig, "__SilKitDashboard", registryUri);
     _participantInternal = dynamic_cast<Core::IParticipantInternal*>(_dashboardParticipant.get());
-    _systemMonitor = _participantInternal->CreateSystemMonitor();
+    _lifecycleService =
+        _dashboardParticipant->CreateLifecycleService({Services::Orchestration::OperationMode::Autonomous});
+    _systemMonitor = _dashboardParticipant->CreateSystemMonitor();
     _serviceDiscovery = _participantInternal->GetServiceDiscovery();
     _logger = _participantInternal->GetLogger();
     _retryPolicy = std::make_shared<DashboardRetryPolicy>(3);
@@ -64,8 +66,7 @@ Dashboard::Dashboard(std::shared_ptr<SilKit::Config::IParticipantConfiguration> 
     auto requestExecutor = oatpp::web::client::HttpRequestExecutor::createShared(connectionProvider, _retryPolicy);
     auto apiClient = DashboardSystemApiClient::createShared(requestExecutor, objectMapper);
     auto silKitToOatppMapper = std::make_shared<SilKitToOatppMapper>();
-    auto serviceClient =
-        std::make_shared<DashboardSystemServiceClient>(_logger, apiClient, objectMapper);
+    auto serviceClient = std::make_shared<DashboardSystemServiceClient>(_logger, apiClient, objectMapper);
     auto eventHandler = std::make_shared<SilKitEventHandler>(_logger, serviceClient, silKitToOatppMapper);
     auto eventQueue = std::make_shared<SilKitEventQueue>();
     _cachingEventHandler = std::make_unique<CachingSilKitEventHandler>(registryUri, _logger, eventHandler, eventQueue);
@@ -85,10 +86,13 @@ Dashboard::Dashboard(std::shared_ptr<SilKit::Config::IParticipantConfiguration> 
     _serviceDiscovery->RegisterServiceDiscoveryHandler([this](auto&& discoveryType, auto&& serviceDescriptor) {
         OnServiceDiscoveryEvent(discoveryType, serviceDescriptor);
     });
+    _lifecycleDone = _lifecycleService->StartLifecycle();
 }
 
 Dashboard::~Dashboard()
 {
+    _lifecycleService->Stop("Stop");
+    _lifecycleDone.wait_for(2s);
     _systemMonitor->RemoveParticipantStatusHandler(_participantStatusHandlerId);
     _systemMonitor->RemoveSystemStateHandler(_systemStateHandlerId);
     _retryPolicy->AbortAllRetries();
@@ -103,12 +107,9 @@ void Dashboard::OnParticipantConnected(
     {
         return;
     }
-    {
-        std::unique_lock<decltype(_connectedParticipantsMx)> lock(_connectedParticipantsMx);
-        _connectedParticipants.push_back(participantInformation.participantName);
-    }
     AccessCachingEventHandler(
         [this](auto cachingEventHandler, auto&& participantInformation) {
+            _connectedParticipants.push_back(participantInformation.participantName);
             cachingEventHandler->OnParticipantConnected(participantInformation);
         },
         participantInformation);
@@ -121,14 +122,14 @@ void Dashboard::OnParticipantDisconnected(
     {
         return;
     }
-    if (LastParticipantDisconnected(participantInformation))
-    {
-        AccessCachingEventHandler(
-            [this](auto cachingEventHandler, auto&& participantInformation) {
+    AccessCachingEventHandler(
+        [this](auto cachingEventHandler, auto&& participantInformation) {
+            if (LastParticipantDisconnected(participantInformation))
+            {
                 cachingEventHandler->OnLastParticipantDisconnected();
-            },
-            participantInformation);
-    }
+            }
+        },
+        participantInformation);
 }
 
 void Dashboard::OnParticipantStatusChanged(const Services::Orchestration::ParticipantStatus& participantStatus)
@@ -170,11 +171,8 @@ void Dashboard::OnServiceDiscoveryEvent(Core::Discovery::ServiceDiscoveryEvent::
 bool Dashboard::LastParticipantDisconnected(
     const Services::Orchestration::ParticipantConnectionInformation& participantInformation)
 {
-    std::unique_lock<decltype(_connectedParticipantsMx)> lock(_connectedParticipantsMx);
-    _connectedParticipants.erase(std::remove_if(_connectedParticipants.begin(), _connectedParticipants.end(),
-                                                [&participantInformation](const auto& participantName) {
-                                                    return participantName == participantInformation.participantName;
-                                                }),
+    _connectedParticipants.erase(std::remove(_connectedParticipants.begin(), _connectedParticipants.end(),
+                                             participantInformation.participantName),
                                  _connectedParticipants.end());
     Services::Logging::Debug(_logger, "Dashboard: {} connected participant(s)", _connectedParticipants.size());
     return _connectedParticipants.empty();
