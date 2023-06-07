@@ -96,8 +96,6 @@ Dashboard::~Dashboard()
     _systemMonitor->RemoveParticipantStatusHandler(_participantStatusHandlerId);
     _systemMonitor->RemoveSystemStateHandler(_systemStateHandlerId);
     _retryPolicy->AbortAllRetries();
-    std::unique_lock<decltype(_cachingEventHandlerMx)> lock(_cachingEventHandlerMx);
-    _cachingEventHandler.reset();
 }
 
 void Dashboard::OnParticipantConnected(
@@ -107,12 +105,11 @@ void Dashboard::OnParticipantConnected(
     {
         return;
     }
-    AccessCachingEventHandler(
-        [this](auto cachingEventHandler, auto&& participantInformation) {
-            _connectedParticipants.push_back(participantInformation.participantName);
-            cachingEventHandler->OnParticipantConnected(participantInformation);
-        },
-        participantInformation);
+    {
+        std::lock_guard<decltype(_connectedParticipantsMx)> lock(_connectedParticipantsMx);
+        _connectedParticipants.push_back(participantInformation.participantName);
+    }
+    _cachingEventHandler->OnParticipantConnected(participantInformation);
 }
 
 void Dashboard::OnParticipantDisconnected(
@@ -122,14 +119,10 @@ void Dashboard::OnParticipantDisconnected(
     {
         return;
     }
-    AccessCachingEventHandler(
-        [this](auto cachingEventHandler, auto&& participantInformation) {
-            if (LastParticipantDisconnected(participantInformation))
-            {
-                cachingEventHandler->OnLastParticipantDisconnected();
-            }
-        },
-        participantInformation);
+    if (LastParticipantDisconnected(participantInformation))
+    {
+        _cachingEventHandler->OnLastParticipantDisconnected();
+    }
 }
 
 void Dashboard::OnParticipantStatusChanged(const Services::Orchestration::ParticipantStatus& participantStatus)
@@ -138,20 +131,12 @@ void Dashboard::OnParticipantStatusChanged(const Services::Orchestration::Partic
     {
         return;
     }
-    AccessCachingEventHandler(
-        [this](auto cachingEventHandler, auto&& participantStatus) {
-            cachingEventHandler->OnParticipantStatusChanged(participantStatus);
-        },
-        participantStatus);
+    _cachingEventHandler->OnParticipantStatusChanged(participantStatus);
 }
 
 void Dashboard::OnSystemStateChanged(Services::Orchestration::SystemState systemState)
 {
-    AccessCachingEventHandler(
-        [this](auto cachingEventHandler, auto&& systemState) {
-            cachingEventHandler->OnSystemStateChanged(systemState);
-        },
-        systemState);
+    _cachingEventHandler->OnSystemStateChanged(systemState);
 }
 
 void Dashboard::OnServiceDiscoveryEvent(Core::Discovery::ServiceDiscoveryEvent::Type discoveryType,
@@ -161,16 +146,13 @@ void Dashboard::OnServiceDiscoveryEvent(Core::Discovery::ServiceDiscoveryEvent::
     {
         return;
     }
-    AccessCachingEventHandler(
-        [this](auto cachingEventHandler, auto&& discoveryType, auto&& serviceDescriptor) {
-            cachingEventHandler->OnServiceDiscoveryEvent(discoveryType, serviceDescriptor);
-        },
-        discoveryType, serviceDescriptor);
+    _cachingEventHandler->OnServiceDiscoveryEvent(discoveryType, serviceDescriptor);
 }
 
 bool Dashboard::LastParticipantDisconnected(
     const Services::Orchestration::ParticipantConnectionInformation& participantInformation)
 {
+    std::lock_guard<decltype(_connectedParticipantsMx)> lock(_connectedParticipantsMx);
     _connectedParticipants.erase(std::remove(_connectedParticipants.begin(), _connectedParticipants.end(),
                                              participantInformation.participantName),
                                  _connectedParticipants.end());

@@ -62,8 +62,6 @@ private:
                                             const Core::ServiceDescriptor& serviceDescriptor);
     bool LastParticipantDisconnected(
         const Services::Orchestration::ParticipantConnectionInformation& participantInformation);
-    template <typename T, typename... A>
-    void AccessCachingEventHandler(T&& func, A&&... args);
 
 private:
     std::unique_ptr<SilKit::IParticipant> _dashboardParticipant;
@@ -74,8 +72,8 @@ private:
     SilKit::Core::Discovery::IServiceDiscovery* _serviceDiscovery{ nullptr };
     SilKit::Services::Logging::ILogger* _logger{ nullptr };
     std::shared_ptr<DashboardRetryPolicy> _retryPolicy;
-    std::mutex _cachingEventHandlerMx;
     std::unique_ptr<ICachingSilKitEventHandler> _cachingEventHandler;
+    std::mutex _connectedParticipantsMx;
     std::vector<std::string> _connectedParticipants;
 
     SilKit::Util::HandlerId _participantStatusHandlerId{};
@@ -83,16 +81,6 @@ private:
 
     std::future<SilKit::Services::Orchestration::ParticipantState> _lifecycleDone;
 };
-
-template <typename T, typename... A>
-void Dashboard::AccessCachingEventHandler(T&& func, A&&... args)
-{
-    std::unique_lock<decltype(_cachingEventHandlerMx)> lock(_cachingEventHandlerMx);
-    if (_cachingEventHandler)
-    {
-        std::forward<T>(func)(_cachingEventHandler.get(), std::forward<A>(args)...);
-    }
-}
 
 } // namespace Dashboard
 } // namespace SilKit
