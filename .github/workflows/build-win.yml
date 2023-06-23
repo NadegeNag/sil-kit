@@ -2,7 +2,7 @@ name: Windows build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "dev_dashboard_pub_sub_mix_test_fix" ]
 
 jobs:
   build-win-x64:
