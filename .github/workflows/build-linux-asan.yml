@@ -1,7 +1,7 @@
 name: 'Linux + address sanitizer'
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "dev_dashboard_pub_sub_mix_test_fix" ]
 jobs:
   clang-asan-debug:
     name: Address Sanitizer Tests
@@ -14,4 +14,3 @@ jobs:
     - uses: ./.github/actions/build-cmake-preset
       with:
         preset-name: clang-asan-debug
-        cmake-args: "-D SILKIT_BUILD_DASHBOARD=OFF"
