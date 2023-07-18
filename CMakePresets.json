@@ -3,7 +3,7 @@
     "configurePresets": [
         {
             "name": "base-env",
-            "description": "Basic preset that defines global variables",
+            "description": "Basic preset that defines global variablehhhs",
             "hidden": true,
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/_build/$env{SILKIT_CMAKE_PRESET_NAME}",
