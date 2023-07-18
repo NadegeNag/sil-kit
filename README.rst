@@ -1,4 +1,4 @@
-================================
+=============================
 The Vector SIL Kit
 ================================
 .. image:: https://img.shields.io/github/v/release/vectorgrp/sil-kit.svg
